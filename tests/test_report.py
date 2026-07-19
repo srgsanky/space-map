@@ -50,6 +50,19 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "nested &amp; things" in html
     assert "&lt;script&gt;.bin" in html
     assert "2.0 GB" in html
+    assert (
+        '<span class="node-name">nested &amp; things</span>'
+        '<svg class="node-kind-icon node-kind-directory"'
+    ) in html
+    assert (
+        '<span class="node-name">&lt;script&gt;.bin</span>'
+        '<span class="node-kind-icon node-kind-file"'
+    ) in html
+    assert 'aria-label="Directory" title="Directory" viewBox="0 0 24 24">' in html
+    assert 'aria-label="File" title="File">📄</span>' in html
+    assert "--folder: #74aee0" in html
+    assert '<span class="node-kind">directory</span>' not in html
+    assert '<span class="node-kind">file</span>' not in html
     assert '<input id="tree-filter" type="search"' in html
     assert 'aria-label="Filter files and directories by name"' in html
     assert "No files or directories match this filter." in html

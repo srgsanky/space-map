@@ -50,7 +50,7 @@ def _write_document(stream: TextIO, result: ScanResult) -> None:
   --surface: #f7f4ee; --panel: #fffcf7; --sunken: #f1ede5;
   --text: #24211c; --secondary: #625c52; --muted: #8f877a;
   --border: #e4ded4; --border-strong: #c8bdac; --accent: #6f4f2a;
-  --warning: #9a650f; --bar: #b9cbd8;
+  --warning: #9a650f; --bar: #b9cbd8; --folder: #74aee0; --folder-outline: #477da9;
   color: var(--text); background: var(--surface);
   font-family: Aptos, "Segoe UI", system-ui, -apple-system, sans-serif;
   font-synthesis: none; text-rendering: optimizeLegibility;
@@ -85,6 +85,9 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .tree-branch[open] > summary .node-marker::before {{ content: "−"; }}
 .node-leaf .node-marker::before {{ content: "·"; color: var(--muted); }}
 .node-name {{ color: var(--text); font-family: ui-monospace, monospace; font-size: 14px; font-weight: 680; white-space: nowrap; }}
+.node-kind-icon {{ flex: 0 0 auto; font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 15px; font-weight: 400; line-height: 1; }}
+.node-kind-directory {{ width: 18px; height: 16px; color: var(--folder); overflow: visible; }}
+.node-kind-directory path {{ stroke: var(--folder-outline); stroke-width: 1.4; stroke-linejoin: round; }}
 .node-kind {{ color: var(--muted); font-size: 12px; white-space: nowrap; }}
 .node-share, .node-size {{ color: var(--secondary); font-family: ui-monospace, monospace; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }}
 .node-size {{ color: var(--text); font-size: 13px; font-weight: 700; }}
@@ -255,7 +258,8 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
     )
     name = html.escape(node.name, quote=True)
     title = html.escape(str(node.path), quote=True) if node.path is not None else name
-    kind = _kind_label(node)
+    kind_icon = _kind_icon(node)
+    kind_detail = _kind_detail(node)
     incomplete = (
         '<span class="node-incomplete" title="Some entries could not be read">partial</span>'
         if node.incomplete
@@ -265,18 +269,30 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
     stream.write(
         f'<div class="tree-node{leaf_class}" title="{title}">'
         '<span class="node-main"><span class="node-marker" aria-hidden="true"></span>'
-        f'<span class="node-name">{name}</span><span class="node-kind">{kind}</span>{incomplete}</span>'
+        f'<span class="node-name">{name}</span>{kind_icon}{kind_detail}{incomplete}</span>'
         f'<span class="usage-track" aria-hidden="true"><span class="usage-fill" style="--share:{share:.2f}%"></span></span>'
         f'<span class="node-share">{share:.1f}%</span>'
         f'<span class="node-size">{format_size(node.allocated_bytes)}</span></div>'
     )
 
 
-def _kind_label(node: ReportNode) -> str:
-    if node.kind == "misc_directories":
-        noun = "directory" if node.item_count == 1 else "directories"
-        return f"{node.item_count:,} direct {noun}"
-    if node.kind == "misc_files":
-        noun = "file" if node.item_count == 1 else "files"
-        return f"{node.item_count:,} direct {noun}"
-    return "directory" if node.kind in {"root", "directory"} else "file"
+def _kind_icon(node: ReportNode) -> str:
+    if node.kind in {"root", "directory", "misc_directories"}:
+        return (
+            '<svg class="node-kind-icon node-kind-directory" role="img" '
+            'aria-label="Directory" title="Directory" viewBox="0 0 24 24">'
+            '<path fill="currentColor" fill-opacity=".72" '
+            'd="M3 10V5.8C3 4.8 3.8 4 4.8 4h4.5l2.1 2H19c1.1 0 2 .9 2 2v2z"></path>'
+            '<path fill="currentColor" d="M3 9.5h18l-2.5 9.3h-13z"></path>'
+            "</svg>"
+        )
+    return (
+        '<span class="node-kind-icon node-kind-file" role="img" '
+        'aria-label="File" title="File">📄</span>'
+    )
+
+
+def _kind_detail(node: ReportNode) -> str:
+    if node.kind in {"misc_directories", "misc_files"}:
+        return f'<span class="node-kind">{node.item_count:,} direct</span>'
+    return ""
