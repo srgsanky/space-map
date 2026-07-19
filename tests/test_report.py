@@ -64,7 +64,10 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "--folder: #74aee0" in html
     assert '<span class="node-kind">directory</span>' not in html
     assert '<span class="node-kind">file</span>' not in html
+    assert '<div class="tree-region"><div class="filter-bar">' in html
+    assert ".tree-region { width: max-content; max-width: 100%; }" in html
     assert '<input id="tree-filter" type="search"' in html
+    assert ".filter-input { width: 100%" in html
     assert 'aria-label="Filter files and directories by name"' in html
     assert "No files or directories match this filter." in html
     assert ".filter-ancestor" in html
