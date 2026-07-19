@@ -45,6 +45,7 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
 
     html = output.read_text()
     assert "<!doctype html>" in html
+    assert '<p class="subtitle">' not in html
     assert '<details class="tree-branch root-branch" open>' in html
     assert '<details class="tree-branch">' in html
     assert "nested &amp; things" in html
