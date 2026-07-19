@@ -13,6 +13,7 @@ class ScanOptions:
     threshold_bytes: int = 100 * 1024 * 1024
     one_file_system: bool = False
     excluded_paths: tuple[Path, ...] = ()
+    skip_time_machine_volumes: bool = True
 
 
 @dataclass(frozen=True)

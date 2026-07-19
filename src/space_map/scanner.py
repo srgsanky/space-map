@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .model import ReportNode, ScanOptions, ScanProgress, ScanResult, ScanWarning
+from .volumes import is_external_time_machine_volume
 
 ProgressCallback = Callable[[ScanProgress], None]
 _MAX_RETAINED_WARNINGS = 100
@@ -16,6 +17,7 @@ _MAX_RETAINED_WARNINGS = 100
 @dataclass
 class _DirectoryFrame:
     path: Path
+    device: int
     is_root: bool
     entries: Iterator[os.DirEntry[str]] | None
     children: list[ReportNode] = field(default_factory=list)
@@ -73,15 +75,21 @@ def scan_tree(
         else:
             suppressed_warning_count += 1
 
-    def start_directory(path: Path, *, is_root: bool = False) -> _DirectoryFrame:
+    def start_directory(path: Path, device: int, *, is_root: bool = False) -> _DirectoryFrame:
         nonlocal directories_scanned
         directories_scanned += 1
         try:
             entries: Iterator[os.DirEntry[str]] | None = os.scandir(path)
-            frame = _DirectoryFrame(path=path, is_root=is_root, entries=entries)
+            frame = _DirectoryFrame(path=path, device=device, is_root=is_root, entries=entries)
         except OSError as error:
             record_warning(path, error)
-            frame = _DirectoryFrame(path=path, is_root=is_root, entries=None, incomplete=True)
+            frame = _DirectoryFrame(
+                path=path,
+                device=device,
+                is_root=is_root,
+                entries=None,
+                incomplete=True,
+            )
         progress(path)
         return frame
 
@@ -128,7 +136,7 @@ def scan_tree(
             parent.misc_directory_bytes += child.allocated_bytes
             parent.misc_directory_count += 1
 
-    stack = [start_directory(root_path, is_root=True)]
+    stack = [start_directory(root_path, root_device, is_root=True)]
     root_node: ReportNode | None = None
 
     try:
@@ -170,8 +178,15 @@ def scan_tree(
                         continue
                     if options.one_file_system and directory_stat.st_dev != root_device:
                         continue
+                    crosses_mount = directory_stat.st_dev != frame.device
+                    if (
+                        options.skip_time_machine_volumes
+                        and crosses_mount
+                        and is_external_time_machine_volume(path)
+                    ):
+                        continue
                     seen_directories.add(identity)
-                    stack.append(start_directory(path))
+                    stack.append(start_directory(path, directory_stat.st_dev))
                 elif entry.is_file(follow_symlinks=False):
                     stat_result = entry.stat(follow_symlinks=False)
                     allocated = _allocated_bytes(stat_result)

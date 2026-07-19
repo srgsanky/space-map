@@ -65,7 +65,18 @@ class _ProgressView:
     is_flag=True,
     help="Do not descend onto a filesystem different from ROOT.",
 )
-def main(root: Path, output: Path, threshold_mb: int, one_file_system: bool) -> None:
+@click.option(
+    "--include-time-machine",
+    is_flag=True,
+    help="Descend into external Time Machine backup volumes.",
+)
+def main(
+    root: Path,
+    output: Path,
+    threshold_mb: int,
+    one_file_system: bool,
+    include_time_machine: bool,
+) -> None:
     """Scan ROOT and generate a collapsible disk-space HTML report."""
     console = Console(stderr=True)
     root = root.expanduser().resolve(strict=True)
@@ -87,6 +98,7 @@ def main(root: Path, output: Path, threshold_mb: int, one_file_system: bool) -> 
     options = ScanOptions(
         threshold_bytes=threshold_mb * _MB,
         one_file_system=one_file_system,
+        skip_time_machine_volumes=not include_time_machine,
         excluded_paths=(output,),
     )
 

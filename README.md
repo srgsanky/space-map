@@ -47,6 +47,9 @@ uv run space-map / --output ~/Desktop/disk-space-report.html
 # Avoid crossing onto another mounted filesystem
 uv run space-map /Volumes/Data --one-file-system
 
+# Include external Time Machine backup volumes (skipped by default on macOS)
+uv run space-map / --include-time-machine
+
 # Change the per-entry threshold (the default is 100 MB)
 uv run space-map ~/workspace --threshold-mb 250
 ```
@@ -94,6 +97,7 @@ Space Map uses allocated regular-file bytes (`st_blocks * 512`) and falls back t
 - Hard-linked files are counted once; the first path encountered owns the bytes.
 - Directory aliases are traversed once, keyed by filesystem device and inode. This avoids double-counting macOS firmlink views such as `/Users` and `/System/Volumes/Data/Users`; the first path encountered owns the subtree.
 - Mounted filesystems are traversed unless `--one-file-system` is supplied.
+- On macOS, external Time Machine destinations are skipped by default. APFS destinations are identified by their `Backup` volume role, and legacy HFS+ destinations by `Backups.backupdb`. Use `--include-time-machine` to scan them.
 - APFS clones, compression, snapshots, purgeable space, deleted-open files, and filesystem-specific sharing cannot be reconciled perfectly from normal file stats.
 - Permission and transient I/O errors do not stop the scan. The resulting report is marked **Partial scan**, and its total should be treated as a lower bound. The error panel starts collapsed and expands into a tree of affected paths.
 

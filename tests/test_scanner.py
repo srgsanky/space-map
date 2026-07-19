@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import space_map.scanner as scanner_module
 from space_map import ScanOptions, scan_tree
@@ -191,6 +192,85 @@ def test_scan_tree_returns_a_partial_result_when_a_directory_is_unreadable(tmp_p
     assert len(result.warnings) == 1
     assert result.warnings[0].path == blocked.resolve()
     assert "Permission denied" in result.warnings[0].message
+
+
+def test_scan_tree_skips_time_machine_volumes_by_default(tmp_path: Path, monkeypatch) -> None:
+    regular = tmp_path / "regular"
+    regular.mkdir()
+    regular_payload = regular / "payload.bin"
+    regular_payload.write_bytes(b"regular")
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / "historical.bin").write_bytes(b"backup")
+
+    original_scandir = os.scandir
+
+    class MountedDirectory:
+        def __init__(self, entry: os.DirEntry[str]) -> None:
+            self._entry = entry
+            self.name = entry.name
+            self.path = entry.path
+
+        def is_symlink(self) -> bool:
+            return self._entry.is_symlink()
+
+        def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+            return self._entry.is_dir(follow_symlinks=follow_symlinks)
+
+        def is_file(self, *, follow_symlinks: bool = True) -> bool:
+            return self._entry.is_file(follow_symlinks=follow_symlinks)
+
+        def stat(self, *, follow_symlinks: bool = True):
+            stat_result = self._entry.stat(follow_symlinks=follow_symlinks)
+            return SimpleNamespace(st_dev=stat_result.st_dev + 1, st_ino=stat_result.st_ino)
+
+    def scandir_with_mounted_backup(path: Path):
+        entries = original_scandir(path)
+        if Path(path) != tmp_path:
+            return entries
+
+        def mounted_entries():
+            try:
+                for entry in entries:
+                    yield MountedDirectory(entry) if entry.name == "backup" else entry
+            finally:
+                entries.close()
+
+        return mounted_entries()
+
+    detected = []
+    monkeypatch.setattr(scanner_module.os, "scandir", scandir_with_mounted_backup)
+    monkeypatch.setattr(
+        scanner_module,
+        "is_external_time_machine_volume",
+        lambda path: detected.append(path) or path == backup,
+    )
+
+    result = scan_tree(tmp_path, ScanOptions(threshold_bytes=1))
+
+    assert result.root.allocated_bytes == allocated_bytes(regular_payload)
+    assert {child.name for child in result.root.children} == {"regular"}
+    assert detected == [backup]
+
+
+def test_scan_tree_can_include_time_machine_volumes(tmp_path: Path, monkeypatch) -> None:
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    payload = backup / "historical.bin"
+    payload.write_bytes(b"backup")
+    monkeypatch.setattr(
+        scanner_module,
+        "is_external_time_machine_volume",
+        lambda path: True,
+    )
+
+    result = scan_tree(
+        tmp_path,
+        ScanOptions(threshold_bytes=1, skip_time_machine_volumes=False),
+    )
+
+    assert result.root.allocated_bytes == allocated_bytes(payload)
+    assert {child.name for child in result.root.children} == {"backup"}
 
 
 def test_scan_tree_excludes_a_requested_output_file(tmp_path: Path) -> None:
