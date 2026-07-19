@@ -69,6 +69,9 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "No files or directories match this filter." in html
     assert ".filter-ancestor" in html
     assert "toLocaleLowerCase().includes(query)" in html
+    assert "border-bottom: 1px solid var(--border)" not in html
+    assert ".tree-children { position: relative; margin-left: 20px" in html
+    assert ".tree-children > :last-child::after" in html
     assert '<dl class="summary-grid">' not in html
     assert "Allocated regular-file bytes; directory metadata is excluded." not in html
     assert "Symlinks and special files are not followed." not in html

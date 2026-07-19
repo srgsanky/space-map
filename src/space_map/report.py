@@ -70,13 +70,16 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .tree-shell {{ overflow-x: auto; margin-top: 20px; padding: 4px 0; }}
 .tree-shell.is-filtering summary {{ cursor: default; }}
 .root-branch {{ width: max-content; }}
-.tree-branch {{ margin: 0; }}
+.tree-branch {{ position: relative; margin: 0; }}
 .tree-branch > summary {{ list-style: none; cursor: pointer; }}
 .tree-branch > summary::-webkit-details-marker {{ display: none; }}
-.tree-children {{ margin-left: 12px; padding-left: 18px; border-left: 1px solid var(--border-strong); }}
-.tree-node {{ position: relative; display: grid; grid-template-columns: minmax(max-content, 1fr) 90px 64px 90px; align-items: center; gap: 16px; width: 100%; min-height: 36px; padding: 5px 8px; border-bottom: 1px solid var(--border); }}
+.tree-children {{ position: relative; margin-left: 20px; padding-left: 18px; }}
+.tree-children:not(:empty)::before {{ content: ""; position: absolute; left: 0; top: -6px; height: 6px; border-left: 1px solid var(--border-strong); }}
+.tree-children > .tree-branch::after, .tree-children > .tree-node::after {{ content: ""; position: absolute; left: -18px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }}
+.tree-children > :last-child::after, .tree-shell.is-filtering .tree-children > :not([hidden]):not(:has(~ :not([hidden])))::after {{ bottom: auto; height: 18px; }}
+.tree-node {{ position: relative; display: grid; grid-template-columns: minmax(max-content, 1fr) 90px 64px 90px; align-items: center; gap: 16px; width: 100%; min-height: 36px; padding: 5px 8px; }}
 .tree-node:hover {{ background: var(--panel); }}
-.tree-node::before {{ content: ""; position: absolute; left: -19px; top: 50%; width: 18px; border-top: 1px solid var(--border-strong); }}
+.tree-node::before {{ content: ""; position: absolute; left: -18px; top: 50%; width: 18px; border-top: 1px solid var(--border-strong); }}
 .root-branch > summary .tree-node::before {{ display: none; }}
 .node-main {{ display: flex; align-items: center; gap: 9px; min-width: 0; }}
 .node-marker {{ display: inline-grid; flex: 0 0 24px; place-items: center; width: 24px; height: 24px; color: var(--accent); font-family: ui-monospace, monospace; font-weight: 700; }}
