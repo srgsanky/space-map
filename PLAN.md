@@ -22,7 +22,7 @@ These choices remove ambiguity from the first implementation:
 - Traverse mounted filesystems by default because they are part of the selected tree. Provide `--one-file-system` for users who want to stay on the root device.
 - Continue through recoverable permission, race, and I/O errors. Mark the report partial and explain that its total is a lower bound.
 - Use a sequential `os.scandir` traversal for MVP. Disk scans are generally I/O-bound, and uncontrolled concurrency can make rotational disks and network mounts slower. Parallel scanning can be considered only after profiling.
-- Generate static HTML using native `<details>`/`<summary>` branch controls. The report needs no web server, CDN, JavaScript, or browser build tool.
+- Generate self-contained HTML using native `<details>`/`<summary>` branch controls and a small inline filtering script. The report needs no web server, CDN, or browser build tool.
 
 ## User interface
 
@@ -103,6 +103,7 @@ Tree behavior:
 - Render all other real directory branches collapsed initially.
 - Clicking a directory’s native summary expands or collapses only that branch.
 - Do not add “expand all” or “collapse all.”
+- Filter rows by a case-insensitive name substring. Keep matching rows and their ancestors, dim non-matching ancestors, and automatically reveal matching paths while filtering.
 - Files and misc categories are leaves.
 - Sort every directory’s displayed children by descending size. Use kind and case-folded name as deterministic tie-breakers.
 - Sort synthetic misc rows by size alongside real children; a very large misc aggregate should be visible near the top rather than forced to the bottom.
@@ -155,7 +156,7 @@ If entries cannot be read or disappear during the scan:
 - list a bounded number of path/error examples so a pathological filesystem cannot make the report enormous;
 - record the total suppressed-warning count when the bound is exceeded.
 
-All paths and names must be HTML-escaped. Since the report has no script, filenames such as `<script>.bin` remain inert text.
+All paths and names must be HTML-escaped and must never be interpolated into the static filtering script. Filenames such as `<script>.bin` remain inert text.
 
 ## Module design
 
@@ -309,11 +310,11 @@ directory total == sum(all displayed real children and misc category sizes)
 
 ### 5. Static HTML report
 
-- Implement semantic nested `<details>`/`<summary>` markup and self-contained CSS.
+- Implement semantic nested `<details>`/`<summary>` markup, self-contained CSS, and inline name-filtering behavior.
 - Apply a warm palette, compact rows, thin tree rails, plus/minus disclosure styling, visible focus states, and right-aligned metadata.
 - Add header metadata, parent percentages, usage bars, partial-scan warnings, and print-friendly styles.
 - Stream to a sibling temporary file and atomically replace the destination.
-- Test escaping with Unicode, quotes, ampersands, and HTML-like filenames; test open root/closed descendants; test row ordering and absence of scripts/external resources.
+- Test escaping with Unicode, quotes, ampersands, and HTML-like filenames; test open root/closed descendants, filtering controls, row ordering, and absence of external resources.
 
 ### 6. End-to-end acceptance and documentation
 
@@ -351,7 +352,7 @@ directory total == sum(all displayed real children and misc category sizes)
 - Percentages and bars are clamped safely when a partial parent has zero bytes
 - Only MB/GB/TB labels appear
 - Filenames and warning text are escaped
-- HTML has no external assets and works from `file://`
+- HTML has no external assets, supports case-insensitive name filtering with dimmed ancestors, and works from `file://`
 
 ### CLI
 
@@ -372,7 +373,7 @@ directory total == sum(all displayed real children and misc category sizes)
 - Every displayed directory shows its complete subtree size; every displayed file shows its allocated size.
 - Real files/directories below 100 MB are absent as individual rows and are reconciled into separate misc categories at their direct parent.
 - Siblings, including misc aggregates, appear largest first.
-- Root starts expanded, nested directories can be independently expanded/collapsed, and no global expansion controls exist.
+- Root starts expanded, nested directories can be independently expanded/collapsed, filtering retains and dims matching ancestors, and no global expansion controls exist.
 - Every human-readable size uses only MB, GB, or TB.
 - Recoverable scan errors produce a clearly partial but usable report; unsafe HTML names cannot alter the report.
 - The scan is single-pass and report replacement is atomic.
@@ -381,7 +382,7 @@ directory total == sum(all displayed real children and misc category sizes)
 
 - deleting, moving, compressing, or recommending actions
 - real-time filesystem watching or report refresh
-- treemaps, charts, search, filters, or global expansion controls
+- treemaps, charts, advanced query syntax, or global expansion controls
 - a local HTTP server or hosted report
 - reconciling snapshots, reclaimable space, deleted-open files, or filesystem-wide free-space reports
 - following symlinks

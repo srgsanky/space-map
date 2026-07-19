@@ -50,11 +50,16 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "nested &amp; things" in html
     assert "&lt;script&gt;.bin" in html
     assert "2.0 GB" in html
+    assert '<input id="tree-filter" type="search"' in html
+    assert 'aria-label="Filter files and directories by name"' in html
+    assert "No files or directories match this filter." in html
+    assert ".filter-ancestor" in html
+    assert "toLocaleLowerCase().includes(query)" in html
     assert '<dl class="summary-grid">' not in html
     assert "Allocated regular-file bytes; directory metadata is excluded." not in html
     assert "Symlinks and special files are not followed." not in html
     assert "Sizes use 1024-based units labelled MB, GB, and TB." not in html
-    assert "<script" not in html
+    assert "<script>.bin" not in html
     assert "http://" not in html
     assert "https://" not in html
     assert "Expand all" not in html

@@ -64,7 +64,12 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .warning-panel {{ margin: 0 0 20px; padding: 16px; border-left: 3px solid var(--warning); background: var(--sunken); }}
 .warning-panel h2 {{ color: var(--warning); font-size: 15px; }}
 .warning-panel p, .warning-panel li {{ margin-top: 6px; color: var(--secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
+.filter-bar {{ display: flex; margin-top: 20px; }}
+.filter-input {{ width: min(100%, 38ch); min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text); background: var(--sunken); font: inherit; }}
+.filter-input::placeholder {{ color: var(--muted); }}
+.filter-empty {{ margin-top: 16px; color: var(--muted); font-size: 13px; }}
 .tree-shell {{ overflow-x: auto; margin-top: 20px; padding: 4px 0; }}
+.tree-shell.is-filtering summary {{ cursor: default; }}
 .root-branch {{ width: max-content; }}
 .tree-branch {{ margin: 0; }}
 .tree-branch > summary {{ list-style: none; cursor: pointer; }}
@@ -86,10 +91,13 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .usage-track {{ height: 6px; overflow: hidden; border-radius: 999px; background: var(--sunken); }}
 .usage-fill {{ display: block; width: var(--share); height: 100%; border-radius: inherit; background: var(--bar); }}
 .node-incomplete {{ color: var(--warning); }}
+.tree-node.filter-ancestor {{ opacity: .42; }}
+.tree-branch.filter-terminal > summary .node-marker::before {{ content: "·"; border-color: transparent; background: transparent; color: var(--muted); }}
+[hidden] {{ display: none !important; }}
 footer {{ margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; line-height: 1.5; }}
-summary:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
 @media (max-width: 720px) {{ main {{ padding: 24px 12px 40px; }} }}
-@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} details {{ display: block; }} details > .tree-children {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
+@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} .filter-bar, .filter-empty {{ display: none; }} details {{ display: block; }} details > .tree-children {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
 </style>
 </head>
 <body>
@@ -117,12 +125,101 @@ summary:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; 
             stream.write(f"<p>{result.suppressed_warning_count:,} additional warnings omitted.</p>")
         stream.write("</aside>")
 
-    stream.write('<section class="tree-shell" aria-label="Disk space hierarchy">')
+    stream.write(
+        '<div class="filter-bar">'
+        '<input id="tree-filter" type="search" class="filter-input" '
+        'placeholder="Filter files and directories" '
+        'aria-label="Filter files and directories by name" '
+        'aria-controls="disk-space-tree" autocomplete="off" spellcheck="false">'
+        "</div>"
+        '<p id="tree-filter-empty" class="filter-empty" role="status" hidden>'
+        "No files or directories match this filter."
+        "</p>"
+        '<section id="disk-space-tree" class="tree-shell" aria-label="Disk space hierarchy">'
+    )
     _write_tree(stream, result.root)
     stream.write(
         "</section>"
         f"<footer>Generated {html.escape(result.completed_at.isoformat(), quote=True)}.</footer>"
-        "</main></body></html>\n"
+        "</main>"
+        """<script>
+(() => {
+  const filter = document.querySelector("#tree-filter");
+  const tree = document.querySelector("#disk-space-tree");
+  const empty = document.querySelector("#tree-filter-empty");
+  const rows = Array.from(tree.querySelectorAll(".tree-node"));
+  const branches = Array.from(tree.querySelectorAll("details.tree-branch"));
+  let savedOpenStates = null;
+
+  function restoreTree() {
+    for (const row of rows) {
+      row.hidden = false;
+      row.classList.remove("filter-ancestor");
+      delete row.dataset.filterMatch;
+    }
+    for (const branch of branches) {
+      branch.hidden = false;
+      branch.classList.remove("filter-terminal");
+    }
+    if (savedOpenStates !== null) {
+      branches.forEach((branch, index) => { branch.open = savedOpenStates[index]; });
+      savedOpenStates = null;
+    }
+    tree.classList.remove("is-filtering");
+    empty.hidden = true;
+  }
+
+  function applyFilter() {
+    const query = filter.value.trim().toLocaleLowerCase();
+    if (query.length === 0) {
+      restoreTree();
+      return;
+    }
+
+    if (savedOpenStates === null) {
+      savedOpenStates = branches.map((branch) => branch.open);
+    }
+    tree.classList.add("is-filtering");
+
+    let matchCount = 0;
+    for (const row of rows) {
+      const name = row.querySelector(".node-name").textContent;
+      const matches = name.toLocaleLowerCase().includes(query);
+      row.dataset.filterMatch = String(matches);
+      if (matches) matchCount += 1;
+      if (row.parentElement.tagName !== "SUMMARY") row.hidden = !matches;
+    }
+
+    for (const branch of [...branches].reverse()) {
+      const ownRow = branch.querySelector(":scope > summary > .tree-node");
+      const ownMatches = ownRow.dataset.filterMatch === "true";
+      const children = branch.querySelector(":scope > .tree-children").children;
+      const descendantMatches = Array.from(children).some((child) => !child.hidden);
+      branch.hidden = !ownMatches && !descendantMatches;
+      branch.open = descendantMatches;
+      branch.classList.toggle("filter-terminal", ownMatches && !descendantMatches);
+      ownRow.classList.toggle("filter-ancestor", !ownMatches && descendantMatches);
+    }
+
+    empty.hidden = matchCount !== 0;
+  }
+
+  filter.addEventListener("input", applyFilter);
+  filter.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && filter.value.length > 0) {
+      filter.value = "";
+      applyFilter();
+    }
+  });
+  tree.addEventListener("click", (event) => {
+    if (tree.classList.contains("is-filtering") && event.target.closest("summary")) {
+      event.preventDefault();
+    }
+  });
+})();
+</script>
+</body></html>
+"""
     )
 
 

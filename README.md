@@ -68,10 +68,11 @@ Run `space-map --help` for all options.
 - Smaller direct child files are combined into `Misc files` at each parent.
 - Every directory's children are sorted from largest to smallest.
 - The root starts expanded. Other directories can be expanded and collapsed independently.
+- The report can be filtered by a case-insensitive substring of a file or directory name. Matching rows remain fully visible while their retained parent rows are dimmed.
 - Dot files and dot directories are included.
 - Sizes are displayed only as MB, GB, or TB.
 
-The report is one local HTML file with embedded CSS. It has no JavaScript, external assets, network requests, or server requirement and can be opened directly with `file://` in a browser.
+The report is one local HTML file with embedded CSS and a small filtering script. It has no external assets, network requests, or server requirement and can be opened directly with `file://` in a browser.
 
 ## Progress
 
