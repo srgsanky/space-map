@@ -1,6 +1,8 @@
+import os
 import sys
 from pathlib import Path
 
+import space_map.scanner as scanner_module
 from space_map import ScanOptions, scan_tree
 
 
@@ -115,6 +117,60 @@ def test_scan_tree_does_not_follow_symlinks_and_counts_hard_links_once(tmp_path:
     assert len([child for child in result.root.children if child.kind == "file"]) == 1
     assert "symlink.bin" not in {child.name for child in result.root.children}
     assert "linked-directory" not in {child.name for child in result.root.children}
+
+
+def test_scan_tree_counts_two_directory_aliases_only_once(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    payload = target / "payload.bin"
+    payload.write_bytes(b"x" * 10_000)
+
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "users").symlink_to(target, target_is_directory=True)
+    (root / "data-users").symlink_to(target, target_is_directory=True)
+
+    original_scandir = os.scandir
+
+    class DirectoryAlias:
+        def __init__(self, entry: os.DirEntry[str]) -> None:
+            self.name = entry.name
+            self.path = entry.path
+
+        def is_symlink(self) -> bool:
+            return False
+
+        def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+            return True
+
+        def is_file(self, *, follow_symlinks: bool = True) -> bool:
+            return False
+
+        def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+            return os.stat(self.path)
+
+    def scandir_with_directory_aliases(path: Path):
+        entries = original_scandir(path)
+        if Path(path) != root:
+            return entries
+
+        def aliases():
+            try:
+                for entry in entries:
+                    yield DirectoryAlias(entry)
+            finally:
+                entries.close()
+
+        return aliases()
+
+    monkeypatch.setattr(scanner_module.os, "scandir", scandir_with_directory_aliases)
+
+    result = scan_tree(root, ScanOptions(threshold_bytes=1))
+
+    assert result.root.allocated_bytes == allocated_bytes(payload)
+    assert result.directories_scanned == 2
+    assert result.files_scanned == 1
+    assert len(result.root.children) == 1
 
 
 def test_scan_tree_returns_a_partial_result_when_a_directory_is_unreadable(tmp_path: Path) -> None:

@@ -40,7 +40,8 @@ def scan_tree(
         raise ValueError("threshold_bytes must not be negative")
 
     excluded_paths = {path.expanduser().resolve(strict=False) for path in options.excluded_paths}
-    root_device = root_path.stat().st_dev
+    root_stat = root_path.stat()
+    root_device = root_stat.st_dev
     started_at = datetime.now().astimezone()
     started_clock = time.monotonic()
     directories_scanned = 0
@@ -49,6 +50,7 @@ def scan_tree(
     error_count = 0
     suppressed_warning_count = 0
     warnings: list[ScanWarning] = []
+    seen_directories = {(root_stat.st_dev, root_stat.st_ino)}
     seen_hard_links: set[tuple[int, int]] = set()
 
     def progress(directory: Path) -> None:
@@ -162,10 +164,13 @@ def scan_tree(
                 if entry.is_symlink():
                     continue
                 if entry.is_dir(follow_symlinks=False):
-                    if options.one_file_system:
-                        directory_stat = entry.stat(follow_symlinks=False)
-                        if directory_stat.st_dev != root_device:
-                            continue
+                    directory_stat = entry.stat(follow_symlinks=False)
+                    identity = (directory_stat.st_dev, directory_stat.st_ino)
+                    if identity in seen_directories:
+                        continue
+                    if options.one_file_system and directory_stat.st_dev != root_device:
+                        continue
+                    seen_directories.add(identity)
                     stack.append(start_directory(path))
                 elif entry.is_file(follow_symlinks=False):
                     stat_result = entry.stat(follow_symlinks=False)

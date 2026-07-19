@@ -19,6 +19,7 @@ These choices remove ambiguity from the first implementation:
 - Synthetic `Misc directories` and `Misc files` rows are always allowed, regardless of their aggregate size.
 - Do not follow symlinks. Ignore sockets, devices, FIFOs, and other non-regular entries.
 - Count multiply-linked regular files once, keyed by device and inode. The first path encountered owns the bytes in the report. This makes the root total closer to actual consumed space than counting every hard-link path.
+- Traverse each directory identity once, keyed by device and inode. The first path encountered owns the subtree, preventing aliases such as macOS `/Users` and `/System/Volumes/Data/Users` from being counted twice.
 - Traverse mounted filesystems by default because they are part of the selected tree. Provide `--one-file-system` for users who want to stay on the root device.
 - Continue through recoverable permission, race, and I/O errors. Mark the report partial and explain that its total is a lower bound.
 - Use a sequential `os.scandir` traversal for MVP. Disk scans are generally I/O-bound, and uncontrolled concurrency can make rotational disks and network mounts slower. Parallel scanning can be considered only after profiling.
@@ -259,7 +260,7 @@ Algorithm:
 7. When a frame completes, create its two synthetic misc leaves when non-empty, sort its retained children, and return the compact result to its parent.
 8. Always retain the final root frame and attach scan metadata/warnings.
 
-This performs one filesystem traversal. It does not run `du` once per directory, which would repeatedly rescan descendants. Expected cost is O(number of visited entries), plus sorting retained direct children. Memory is proportional to the active traversal depth, retained report nodes, and identities of multiply-linked files—not every small file path.
+This performs one filesystem traversal. It does not run `du` once per directory, which would repeatedly rescan descendants. Expected cost is O(number of visited entries), plus sorting retained direct children. Memory is proportional to the active traversal depth, retained report nodes, directory identities, and identities of multiply-linked files—not every small file path.
 
 The output target is excluded from the scan when it is inside the selected root, preventing a prior report from counting itself.
 
