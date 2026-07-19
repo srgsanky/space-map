@@ -1,0 +1,9 @@
+.DS_Store
+.venv/
+dist/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+space-map-report.html
+.*.html.*.tmp
