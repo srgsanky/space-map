@@ -36,6 +36,7 @@ def write_html_report(result: ScanResult, output_path: Path | str) -> None:
 
 def _write_document(stream: TextIO, result: ScanResult) -> None:
     root_name = html.escape(result.root.name, quote=True)
+    completed_at = html.escape(result.completed_at.isoformat(timespec="seconds"), quote=True)
     partial = result.root.incomplete or bool(result.warnings) or result.suppressed_warning_count > 0
     warning_count = len(result.warnings) + result.suppressed_warning_count
     stream.write(
@@ -144,16 +145,44 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     _write_tree(stream, result.root)
     stream.write(
         "</section>"
-        f"<footer>Generated {html.escape(result.completed_at.isoformat(), quote=True)}.</footer>"
+        f'<footer>Generated <time id="generated-time" datetime="{completed_at}">{completed_at}</time>'
+        '<span id="generated-relative"></span>.</footer>'
         "</main>"
         """<script>
 (() => {
   const filter = document.querySelector("#tree-filter");
   const tree = document.querySelector("#disk-space-tree");
   const empty = document.querySelector("#tree-filter-empty");
+  const generatedTime = document.querySelector("#generated-time");
+  const generatedRelative = document.querySelector("#generated-relative");
   const rows = Array.from(tree.querySelectorAll(".tree-node"));
   const branches = Array.from(tree.querySelectorAll("details.tree-branch"));
   let savedOpenStates = null;
+
+  function updateGeneratedRelativeTime() {
+    const elapsedMilliseconds = Date.now() - new Date(generatedTime.dateTime).getTime();
+    if (!Number.isFinite(elapsedMilliseconds)) return;
+
+    const isPast = elapsedMilliseconds >= 0;
+    const elapsedHours = Math.floor(Math.abs(elapsedMilliseconds) / 3_600_000);
+    let relativeTime;
+    if (elapsedHours < 1) {
+      relativeTime = isPast ? "less than an hour ago" : "in less than an hour";
+    } else if (elapsedHours < 24) {
+      relativeTime = isPast
+        ? `${elapsedHours} hour${elapsedHours === 1 ? "" : "s"} ago`
+        : `in ${elapsedHours} hour${elapsedHours === 1 ? "" : "s"}`;
+    } else {
+      const elapsedDays = Math.floor(elapsedHours / 24);
+      relativeTime = isPast
+        ? `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} ago`
+        : `in ${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
+    }
+    generatedRelative.textContent = ` (${relativeTime})`;
+  }
+
+  updateGeneratedRelativeTime();
+  window.setInterval(updateGeneratedRelativeTime, 60_000);
 
   function restoreTree() {
     for (const row of rows) {
