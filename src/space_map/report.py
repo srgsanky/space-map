@@ -61,7 +61,7 @@ body {{ margin: 0; min-width: 320px; background: var(--surface); }}
 main {{ width: 100%; padding: 40px 20px 56px; }}
 h1, h2, p {{ margin: 0; }}
 h1 {{ font-size: 30px; letter-spacing: -.03em; }}
-.warning-panel {{ margin: 0 0 20px; padding: 16px; border-left: 3px solid var(--warning); background: var(--sunken); }}
+.warning-panel {{ margin: 20px 0 0; padding: 16px; border-left: 3px solid var(--warning); background: var(--sunken); }}
 .warning-panel h2 {{ color: var(--warning); font-size: 15px; }}
 .warning-panel p, .warning-panel li {{ margin-top: 6px; color: var(--secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
 .tree-region {{ width: max-content; max-width: 100%; }}
@@ -114,6 +114,21 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
 </header>
 """
     )
+    stream.write(
+        '<div class="tree-region"><div class="filter-bar">'
+        '<input id="tree-filter" type="search" class="filter-input" '
+        'placeholder="Filter files and directories" '
+        'aria-label="Filter files and directories by name" '
+        'aria-controls="disk-space-tree" autocomplete="off" spellcheck="false">'
+        "</div>"
+        '<p id="tree-filter-empty" class="filter-empty" role="status" hidden>'
+        "No files or directories match this filter."
+        "</p>"
+        '<section id="disk-space-tree" class="tree-shell" aria-label="Disk space hierarchy">'
+    )
+    _write_tree(stream, result.root)
+    stream.write("</section></div>")
+
     if partial:
         stream.write(
             '<aside class="warning-panel"><h2>Partial scan</h2>'
@@ -132,20 +147,6 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
         stream.write("</aside>")
 
     stream.write(
-        '<div class="tree-region"><div class="filter-bar">'
-        '<input id="tree-filter" type="search" class="filter-input" '
-        'placeholder="Filter files and directories" '
-        'aria-label="Filter files and directories by name" '
-        'aria-controls="disk-space-tree" autocomplete="off" spellcheck="false">'
-        "</div>"
-        '<p id="tree-filter-empty" class="filter-empty" role="status" hidden>'
-        "No files or directories match this filter."
-        "</p>"
-        '<section id="disk-space-tree" class="tree-shell" aria-label="Disk space hierarchy">'
-    )
-    _write_tree(stream, result.root)
-    stream.write(
-        "</section></div>"
         f'<footer>Generated <time id="generated-time" datetime="{completed_at}">{completed_at}</time>'
         '<span id="generated-relative"></span>.</footer>'
         "</main>"

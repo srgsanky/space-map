@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from space_map import ReportNode, ScanOptions, ScanResult, write_html_report
+from space_map import ReportNode, ScanOptions, ScanResult, ScanWarning, write_html_report
 
 
 def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree(
@@ -35,7 +35,7 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
         elapsed_seconds=90,
         directories_scanned=2,
         files_scanned=1,
-        warnings=(),
+        warnings=(ScanWarning(path=tmp_path / "unreadable", message="Permission denied"),),
         suppressed_warning_count=0,
         options=ScanOptions(),
     )
@@ -65,6 +65,11 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert '<span class="node-kind">directory</span>' not in html
     assert '<span class="node-kind">file</span>' not in html
     assert '<div class="tree-region"><div class="filter-bar">' in html
+    tree_end = html.index("</section></div>")
+    warning = html.index('<aside class="warning-panel"><h2>Partial scan</h2>')
+    footer = html.index("<footer>")
+    assert tree_end < warning < footer
+    assert ".warning-panel { margin: 20px 0 0;" in html
     assert ".tree-region { width: max-content; max-width: 100%; }" in html
     assert '<input id="tree-filter" type="search"' in html
     assert ".filter-input { width: 100%" in html
