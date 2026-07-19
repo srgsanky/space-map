@@ -110,7 +110,15 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .tree-branch > summary .node-marker::before {{ content: "+"; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--sunken); }}
 .tree-branch[open] > summary .node-marker::before {{ content: "−"; }}
 .node-leaf .node-marker::before {{ content: "·"; color: var(--muted); }}
+.node-name-group {{ display: inline-flex; align-items: center; gap: 3px; min-width: 0; }}
 .node-name {{ color: var(--text); font-family: ui-monospace, monospace; font-size: 14px; font-weight: 680; white-space: nowrap; }}
+.copy-path {{ display: inline-grid; flex: 0 0 24px; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }}
+.copy-path:hover {{ color: var(--accent); background: var(--sunken); }}
+.copy-path svg {{ width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }}
+.copy-path .copy-icon-success {{ display: none; }}
+.copy-path.is-copied {{ color: var(--accent); }}
+.copy-path.is-copied .copy-icon-default {{ display: none; }}
+.copy-path.is-copied .copy-icon-success {{ display: inline; }}
 .node-kind-icon {{ flex: 0 0 auto; font-family: "Apple Color Emoji", "Segoe UI Emoji", sans-serif; font-size: 15px; font-weight: 400; line-height: 1; }}
 .node-kind-directory {{ width: 18px; height: 16px; color: var(--folder); overflow: visible; }}
 .node-kind-directory path {{ stroke: var(--folder-outline); stroke-width: 1.4; stroke-linejoin: round; }}
@@ -124,9 +132,10 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .tree-branch.filter-terminal > summary .node-marker::before {{ content: "·"; border-color: transparent; background: transparent; color: var(--muted); }}
 [hidden] {{ display: none !important; }}
 footer {{ margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; line-height: 1.5; }}
-summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+summary:focus-visible, .filter-input:focus-visible, .copy-path:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+.visually-hidden {{ position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }}
 @media (max-width: 720px) {{ main {{ padding: 24px 12px 40px; }} .warning-details > summary {{ align-items: flex-start; flex-wrap: wrap; }} .warning-overview {{ flex-basis: calc(100% - 32px); margin-left: 32px; }} }}
-@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} .filter-bar, .filter-empty {{ display: none; }} details {{ display: block; }} details > .tree-children, .warning-details > .warning-content {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
+@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} .filter-bar, .filter-empty, .copy-path {{ display: none; }} details {{ display: block; }} details > .tree-children, .warning-details > .warning-content {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
 </style>
 </head>
 <body>
@@ -139,9 +148,10 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     stream.write(
         '<div class="tree-region"><div class="filter-bar">'
         '<input id="tree-filter" type="search" class="filter-input" '
-        'placeholder="Filter files and directories" '
-        'aria-label="Filter files and directories by name" '
+        'placeholder="Filter files and directories by name or path" '
+        'aria-label="Filter files and directories by name or full path" '
         'aria-controls="disk-space-tree" autocomplete="off" spellcheck="false">'
+        '<span id="copy-status" class="visually-hidden" role="status" aria-live="polite"></span>'
         "</div>"
         '<p id="tree-filter-empty" class="filter-empty" role="status" hidden>'
         "No files or directories match this filter."
@@ -181,6 +191,7 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
   const filter = document.querySelector("#tree-filter");
   const tree = document.querySelector("#disk-space-tree");
   const empty = document.querySelector("#tree-filter-empty");
+  const copyStatus = document.querySelector("#copy-status");
   const generatedTime = document.querySelector("#generated-time");
   const generatedRelative = document.querySelector("#generated-relative");
   const rows = Array.from(tree.querySelectorAll(".tree-node"));
@@ -244,8 +255,8 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
 
     let matchCount = 0;
     for (const row of rows) {
-      const name = row.querySelector(".node-name").textContent;
-      const matches = name.toLocaleLowerCase().includes(query);
+      const nameOrPath = row.dataset.path || row.querySelector(".node-name").textContent;
+      const matches = nameOrPath.toLocaleLowerCase().includes(query);
       row.dataset.filterMatch = String(matches);
       if (matches) matchCount += 1;
       if (row.parentElement.tagName !== "SUMMARY") row.hidden = !matches;
@@ -265,6 +276,53 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     empty.hidden = matchCount !== 0;
   }
 
+  function copyWithLegacyApi(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.setAttribute("readonly", "");
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    document.body.append(textArea);
+    textArea.select();
+    textArea.setSelectionRange(0, text.length);
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      textArea.remove();
+    }
+  }
+
+  async function copyPath(button) {
+    const path = button.dataset.copyPath;
+    let copied = false;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(path);
+        copied = true;
+      } catch {
+        // Local file reports may not be allowed to use the modern Clipboard API.
+      }
+    }
+    if (!copied) copied = copyWithLegacyApi(path);
+
+    copyStatus.textContent = "";
+    window.setTimeout(() => {
+      copyStatus.textContent = copied ? `Copied ${path}` : "Could not copy path";
+    }, 0);
+    if (!copied) return;
+
+    button.classList.add("is-copied");
+    button.setAttribute("aria-label", "Path copied");
+    button.title = "Copied";
+    window.setTimeout(() => {
+      button.classList.remove("is-copied");
+      button.setAttribute("aria-label", "Copy full path");
+      button.title = "Copy full path";
+    }, 1_500);
+  }
+
   filter.addEventListener("input", applyFilter);
   filter.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && filter.value.length > 0) {
@@ -273,6 +331,13 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     }
   });
   tree.addEventListener("click", (event) => {
+    const copyButton = event.target.closest(".copy-path");
+    if (copyButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      copyPath(copyButton);
+      return;
+    }
     if (tree.classList.contains("is-filtering") && event.target.closest("summary")) {
       event.preventDefault();
     }
@@ -378,6 +443,8 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
     )
     name = html.escape(node.name, quote=True)
     title = html.escape(str(node.path), quote=True) if node.path is not None else name
+    path_attribute = f' data-path="{title}"' if node.path is not None else ""
+    copy_button = _copy_path_button(title) if node.path is not None else ""
     kind_icon = _kind_icon(node)
     kind_detail = _kind_detail(node)
     incomplete = (
@@ -387,12 +454,25 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
     )
     leaf_class = " node-leaf" if leaf else ""
     stream.write(
-        f'<div class="tree-node{leaf_class}" title="{title}">'
+        f'<div class="tree-node{leaf_class}" title="{title}"{path_attribute}>'
         '<span class="node-main"><span class="node-marker" aria-hidden="true"></span>'
-        f'<span class="node-name">{name}</span>{kind_icon}{kind_detail}{incomplete}</span>'
+        f'<span class="node-name-group"><span class="node-name">{name}</span>{copy_button}</span>'
+        f"{kind_icon}{kind_detail}{incomplete}</span>"
         f'<span class="usage-track" aria-hidden="true"><span class="usage-fill" style="--share:{share:.2f}%"></span></span>'
         f'<span class="node-share">{share:.1f}%</span>'
         f'<span class="node-size">{format_size(node.allocated_bytes)}</span></div>'
+    )
+
+
+def _copy_path_button(escaped_path: str) -> str:
+    return (
+        f'<button type="button" class="copy-path" data-copy-path="{escaped_path}" '
+        'aria-label="Copy full path" title="Copy full path">'
+        '<svg viewBox="0 0 20 20" aria-hidden="true">'
+        '<g class="copy-icon-default"><rect x="7" y="7" width="9" height="9" rx="1.5"></rect>'
+        '<path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-7A1.5 1.5 0 0 0 3 5.5v7A1.5 1.5 0 0 0 4.5 14H7"></path></g>'
+        '<path class="copy-icon-success" d="m4 10 3.5 3.5L16 5"></path>'
+        "</svg></button>"
     )
 
 

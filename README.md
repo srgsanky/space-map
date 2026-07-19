@@ -71,7 +71,8 @@ Run `space-map --help` for all options.
 - Smaller direct child files are combined into `Misc files` at each parent.
 - Every directory's children are sorted from largest to smallest.
 - The root starts expanded. Other directories can be expanded and collapsed independently.
-- The report can be filtered by a case-insensitive substring of a file or directory name. Matching rows remain fully visible while their retained parent rows are dimmed.
+- The report can be filtered by a case-insensitive substring of a file or directory's name or full path. Matching rows remain fully visible while their retained parent rows are dimmed.
+- A copy icon beside each real file or directory name copies its full path. The report falls back to the legacy clipboard API when a browser restricts clipboard access for local files.
 - Dot files and dot directories are included.
 - Sizes are displayed only as MB, GB, or TB.
 

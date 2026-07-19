@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from html import escape
 from pathlib import Path
 
 from space_map import ReportNode, ScanOptions, ScanResult, ScanWarning, write_html_report
@@ -55,13 +56,18 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "&lt;script&gt;.bin" in html
     assert "2.0 GB" in html
     assert (
-        '<span class="node-name">nested &amp; things</span>'
-        '<svg class="node-kind-icon node-kind-directory"'
+        '<span class="node-name-group"><span class="node-name">nested &amp; things</span>'
+        '<button type="button" class="copy-path"'
     ) in html
     assert (
-        '<span class="node-name">&lt;script&gt;.bin</span>'
-        '<span class="node-kind-icon node-kind-file"'
+        '<span class="node-name-group"><span class="node-name">&lt;script&gt;.bin</span>'
+        '<button type="button" class="copy-path"'
     ) in html
+    assert html.count('class="copy-path"') == 3
+    assert 'data-copy-path="' in html
+    assert 'aria-label="Copy full path" title="Copy full path"' in html
+    assert "navigator.clipboard.writeText(path)" in html
+    assert 'document.execCommand("copy")' in html
     assert 'aria-label="Directory" title="Directory" viewBox="0 0 24 24">' in html
     assert 'aria-label="File" title="File">📄</span>' in html
     assert "--folder: #74aee0" in html
@@ -86,10 +92,17 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert ".tree-region { width: max-content; max-width: 100%; }" in html
     assert '<input id="tree-filter" type="search"' in html
     assert ".filter-input { width: 100%" in html
-    assert 'aria-label="Filter files and directories by name"' in html
+    assert 'aria-label="Filter files and directories by name or full path"' in html
     assert "No files or directories match this filter." in html
     assert ".filter-ancestor" in html
-    assert "toLocaleLowerCase().includes(query)" in html
+    assert 'row.dataset.path || row.querySelector(".node-name").textContent' in html
+    assert "nameOrPath.toLocaleLowerCase().includes(query)" in html
+    nested_path = escape(str(tmp_path / "nested & things"), quote=True)
+    file_path = escape(str(tmp_path / "nested & things" / "<script>.bin"), quote=True)
+    assert f'data-path="{nested_path}"' in html
+    assert f'data-copy-path="{nested_path}"' in html
+    assert f'data-path="{file_path}"' in html
+    assert f'data-copy-path="{file_path}"' in html
     assert 'datetime="2026-07-18T12:01:30+00:00"' in html
     assert "123456" not in html
     assert "less than an hour ago" in html

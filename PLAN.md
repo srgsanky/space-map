@@ -105,7 +105,8 @@ Tree behavior:
 - Render all other real directory branches collapsed initially.
 - Clicking a directory’s native summary expands or collapses only that branch.
 - Do not add “expand all” or “collapse all.”
-- Filter rows by a case-insensitive name substring. Keep matching rows and their ancestors, dim non-matching ancestors, and automatically reveal matching paths while filtering.
+- Filter rows by a case-insensitive name or full-path substring. Keep matching rows and their ancestors, dim non-matching ancestors, and automatically reveal matching paths while filtering.
+- Provide a copy control beside each real file or directory name that copies its full path.
 - Files and misc categories are leaves.
 - Sort every directory’s displayed children by descending size. Use kind and case-folded name as deterministic tie-breakers.
 - Sort synthetic misc rows by size alongside real children; a very large misc aggregate should be visible near the top rather than forced to the bottom.
@@ -312,7 +313,7 @@ directory total == sum(all displayed real children and misc category sizes)
 
 ### 5. Static HTML report
 
-- Implement semantic nested `<details>`/`<summary>` markup, self-contained CSS, and inline name-filtering behavior.
+- Implement semantic nested `<details>`/`<summary>` markup, self-contained CSS, and inline name-or-path filtering behavior.
 - Apply a warm palette, compact rows, thin tree rails, plus/minus disclosure styling, visible focus states, and right-aligned metadata.
 - Add header metadata, parent percentages, usage bars, partial-scan warnings, and print-friendly styles.
 - Stream to a sibling temporary file and atomically replace the destination.
@@ -354,7 +355,7 @@ directory total == sum(all displayed real children and misc category sizes)
 - Percentages and bars are clamped safely when a partial parent has zero bytes
 - Only MB/GB/TB labels appear
 - Filenames and warning text are escaped
-- HTML has no external assets, supports case-insensitive name filtering with dimmed ancestors, and works from `file://`
+- HTML has no external assets, supports case-insensitive name-or-path filtering with dimmed ancestors, and works from `file://`
 
 ### CLI
 
