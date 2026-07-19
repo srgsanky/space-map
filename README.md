@@ -7,6 +7,31 @@
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 
+## Finding what is filling a Mac
+
+Start with a report of the whole Mac to find the largest areas:
+
+```bash
+uv run space-map / --output ~/Desktop/space-map-mac.html
+open ~/Desktop/space-map-mac.html
+```
+
+Then generate more focused reports for common hot spots. A lower threshold makes these reports more detailed:
+
+```bash
+# Your files, downloads, caches, and application data
+uv run space-map "$HOME" --threshold-mb 25 \
+  --output ~/Desktop/space-map-home.html
+
+# Temporary files (/tmp resolves to /private/tmp on macOS)
+uv run space-map /private/tmp --threshold-mb 25 \
+  --output ~/Desktop/space-map-tmp.html
+```
+
+Open the focused reports and expand the largest rows first. Space Map is read-only: review anything it identifies before deleting it with the Finder or an appropriate application.
+
+A scan of `/` can be marked **Partial scan** when macOS denies access to protected locations. Granting Full Disk Access to the terminal application running Space Map can make the report more complete. Do not use `--one-file-system` for this whole-Mac scan: modern macOS installations split system and user data across volumes.
+
 ## Usage
 
 ```bash
