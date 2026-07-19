@@ -154,7 +154,7 @@ If entries cannot be read or disappear during the scan:
 - increment the progress error count;
 - mark the affected ancestor and final result incomplete;
 - show a report warning explaining that totals may be low;
-- list a bounded number of path/error examples so a pathological filesystem cannot make the report enormous;
+- show the bounded path/error examples in a collapsed-by-default tree so a pathological filesystem cannot make the report enormous;
 - record the total suppressed-warning count when the bound is exceeded.
 
 All paths and names must be HTML-escaped and must never be interpolated into the static filtering script. Filenames such as `<script>.bin` remain inert text.

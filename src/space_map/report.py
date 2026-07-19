@@ -3,11 +3,20 @@ from __future__ import annotations
 import html
 import os
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
 from .formatting import format_size
 from .model import ReportNode, ScanResult
+
+
+@dataclass
+class _WarningPathNode:
+    name: str
+    path: Path
+    messages: list[str] = field(default_factory=list)
+    children: dict[str, _WarningPathNode] = field(default_factory=dict)
 
 
 def write_html_report(result: ScanResult, output_path: Path | str) -> None:
@@ -62,8 +71,21 @@ main {{ width: 100%; padding: 40px 20px 56px; }}
 h1, h2, p {{ margin: 0; }}
 h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .warning-panel {{ margin: 20px 0 0; padding: 16px; border-left: 3px solid var(--warning); background: var(--sunken); }}
-.warning-panel h2 {{ color: var(--warning); font-size: 15px; }}
-.warning-panel p, .warning-panel li {{ margin-top: 6px; color: var(--secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
+.warning-details > summary {{ display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; }}
+.warning-details > summary::-webkit-details-marker {{ display: none; }}
+.warning-toggle {{ display: inline-grid; flex: 0 0 22px; place-items: center; width: 22px; height: 22px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--panel); color: var(--warning); font-family: ui-monospace, monospace; font-weight: 700; }}
+.warning-toggle::before {{ content: "+"; }}
+.warning-details[open] .warning-toggle::before {{ content: "−"; }}
+.warning-heading {{ color: var(--warning); font-size: 15px; font-weight: 700; }}
+.warning-overview, .warning-omitted {{ color: var(--secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
+.warning-content {{ margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }}
+.warning-tree {{ max-width: 100%; overflow-x: auto; padding: 4px 0; }}
+.warning-tree .tree-node {{ display: flex; width: max-content; min-width: 100%; }}
+.warning-tree .node-main {{ align-items: baseline; }}
+.warning-message {{ color: var(--secondary); font-size: 12px; font-weight: 400; white-space: nowrap; }}
+.warning-message::before {{ content: "— "; color: var(--muted); }}
+.warning-icon {{ color: var(--warning); }}
+.warning-omitted {{ margin-top: 8px; }}
 .tree-region {{ width: max-content; max-width: 100%; }}
 .filter-bar {{ display: flex; margin-top: 20px; }}
 .filter-input {{ width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text); background: var(--sunken); font: inherit; }}
@@ -103,8 +125,8 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 [hidden] {{ display: none !important; }}
 footer {{ margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; line-height: 1.5; }}
 summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
-@media (max-width: 720px) {{ main {{ padding: 24px 12px 40px; }} }}
-@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} .filter-bar, .filter-empty {{ display: none; }} details {{ display: block; }} details > .tree-children {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
+@media (max-width: 720px) {{ main {{ padding: 24px 12px 40px; }} .warning-details > summary {{ align-items: flex-start; flex-wrap: wrap; }} .warning-overview {{ flex-basis: calc(100% - 32px); margin-left: 32px; }} }}
+@media print {{ body, :root {{ background: white; }} main {{ padding: 0; }} .filter-bar, .filter-empty {{ display: none; }} details {{ display: block; }} details > .tree-children, .warning-details > .warning-content {{ display: block; }} .tree-node {{ break-inside: avoid; }} }}
 </style>
 </head>
 <body>
@@ -130,21 +152,25 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     stream.write("</section></div>")
 
     if partial:
+        error_phrase = "filesystem error was" if warning_count == 1 else "filesystem errors were"
         stream.write(
-            '<aside class="warning-panel"><h2>Partial scan</h2>'
-            f"<p>{warning_count:,} filesystem errors were encountered. "
-            "Reported totals are a lower bound.</p>"
+            '<aside class="warning-panel"><details class="warning-details"><summary>'
+            '<span class="warning-toggle" aria-hidden="true"></span>'
+            '<span class="warning-heading">Partial scan</span>'
+            f'<span class="warning-overview">{warning_count:,} {error_phrase} encountered. '
+            "Reported totals are a lower bound.</span></summary>"
+            '<div class="warning-content">'
         )
         if result.warnings:
-            stream.write("<ul>")
-            for warning in result.warnings:
-                path = html.escape(str(warning.path), quote=True)
-                message = html.escape(warning.message, quote=True)
-                stream.write(f"<li><strong>{path}</strong>: {message}</li>")
-            stream.write("</ul>")
+            stream.write('<div class="warning-tree" aria-label="Filesystem errors by path">')
+            _write_warning_tree(stream, result)
+            stream.write("</div>")
         if result.suppressed_warning_count:
-            stream.write(f"<p>{result.suppressed_warning_count:,} additional warnings omitted.</p>")
-        stream.write("</aside>")
+            stream.write(
+                f'<p class="warning-omitted">{result.suppressed_warning_count:,} '
+                "additional warnings omitted.</p>"
+            )
+        stream.write("</div></details></aside>")
 
     stream.write(
         f'<footer>Generated <time id="generated-time" datetime="{completed_at}">{completed_at}</time>'
@@ -258,6 +284,68 @@ summary:focus-visible, .filter-input:focus-visible {{ outline: 2px solid var(--a
     )
 
 
+def _write_warning_tree(stream: TextIO, result: ScanResult) -> None:
+    root = _build_warning_tree(result)
+    stack: list[tuple[str, _WarningPathNode, bool]] = [("node", root, True)]
+    while stack:
+        event, node, is_root = stack.pop()
+        if event == "close":
+            stream.write("</div></details>")
+            continue
+
+        is_branch = is_root or bool(node.children)
+        if is_branch:
+            classes = "tree-branch root-branch" if is_root else "tree-branch"
+            stream.write(f'<details class="{classes}" open><summary>')
+            _write_warning_row(stream, node, leaf=False)
+            stream.write('</summary><div class="tree-children">')
+            stack.append(("close", node, is_root))
+            children = sorted(node.children.values(), key=lambda child: child.name.casefold())
+            for child in reversed(children):
+                stack.append(("node", child, False))
+        else:
+            _write_warning_row(stream, node, leaf=True)
+
+
+def _build_warning_tree(result: ScanResult) -> _WarningPathNode:
+    root_path = result.root.path or Path(result.root.name)
+    root = _WarningPathNode(name=result.root.name, path=root_path)
+    for warning in result.warnings:
+        try:
+            parts = warning.path.relative_to(root_path).parts
+            outside_root = False
+        except ValueError:
+            parts = (str(warning.path),)
+            outside_root = True
+
+        node = root
+        for part in parts:
+            child = node.children.get(part)
+            if child is None:
+                child_path = warning.path if outside_root else node.path / part
+                child = _WarningPathNode(name=part, path=child_path)
+                node.children[part] = child
+            node = child
+        node.messages.append(warning.message)
+    return root
+
+
+def _write_warning_row(stream: TextIO, node: _WarningPathNode, *, leaf: bool) -> None:
+    name = html.escape(node.name, quote=True)
+    title = html.escape(str(node.path), quote=True)
+    icon = _directory_icon() if node.children else _warning_icon()
+    messages = "".join(
+        f'<span class="warning-message">{html.escape(message, quote=True)}</span>'
+        for message in node.messages
+    )
+    leaf_class = " node-leaf" if leaf else ""
+    stream.write(
+        f'<div class="tree-node{leaf_class}" title="{title}">'
+        '<span class="node-main"><span class="node-marker" aria-hidden="true"></span>'
+        f'<span class="node-name">{name}</span>{icon}{messages}</span></div>'
+    )
+
+
 def _write_tree(stream: TextIO, root: ReportNode) -> None:
     stack: list[tuple[str, ReportNode, int]] = [("node", root, root.allocated_bytes)]
     while stack:
@@ -310,17 +398,28 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
 
 def _kind_icon(node: ReportNode) -> str:
     if node.kind in {"root", "directory", "misc_directories"}:
-        return (
-            '<svg class="node-kind-icon node-kind-directory" role="img" '
-            'aria-label="Directory" title="Directory" viewBox="0 0 24 24">'
-            '<path fill="currentColor" fill-opacity=".72" '
-            'd="M3 10V5.8C3 4.8 3.8 4 4.8 4h4.5l2.1 2H19c1.1 0 2 .9 2 2v2z"></path>'
-            '<path fill="currentColor" d="M3 9.5h18l-2.5 9.3h-13z"></path>'
-            "</svg>"
-        )
+        return _directory_icon()
     return (
         '<span class="node-kind-icon node-kind-file" role="img" '
         'aria-label="File" title="File">📄</span>'
+    )
+
+
+def _directory_icon() -> str:
+    return (
+        '<svg class="node-kind-icon node-kind-directory" role="img" '
+        'aria-label="Directory" title="Directory" viewBox="0 0 24 24">'
+        '<path fill="currentColor" fill-opacity=".72" '
+        'd="M3 10V5.8C3 4.8 3.8 4 4.8 4h4.5l2.1 2H19c1.1 0 2 .9 2 2v2z"></path>'
+        '<path fill="currentColor" d="M3 9.5h18l-2.5 9.3h-13z"></path>'
+        "</svg>"
+    )
+
+
+def _warning_icon() -> str:
+    return (
+        '<span class="node-kind-icon warning-icon" role="img" '
+        'aria-label="Filesystem error" title="Filesystem error">⚠</span>'
     )
 
 

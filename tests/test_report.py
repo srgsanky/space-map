@@ -35,7 +35,10 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
         elapsed_seconds=90,
         directories_scanned=2,
         files_scanned=1,
-        warnings=(ScanWarning(path=tmp_path / "unreadable", message="Permission denied"),),
+        warnings=(
+            ScanWarning(path=tmp_path / "protected" / "one", message="Permission <denied>"),
+            ScanWarning(path=tmp_path / "protected" / "two", message="Operation not permitted"),
+        ),
         suppressed_warning_count=0,
         options=ScanOptions(),
     )
@@ -66,9 +69,19 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert '<span class="node-kind">file</span>' not in html
     assert '<div class="tree-region"><div class="filter-bar">' in html
     tree_end = html.index("</section></div>")
-    warning = html.index('<aside class="warning-panel"><h2>Partial scan</h2>')
+    warning = html.index('<aside class="warning-panel"><details class="warning-details">')
     footer = html.index("<footer>")
     assert tree_end < warning < footer
+    assert '<details class="warning-details" open>' not in html
+    assert '<span class="warning-heading">Partial scan</span>' in html
+    assert "2 filesystem errors were encountered. Reported totals are a lower bound." in html
+    assert '<div class="warning-tree" aria-label="Filesystem errors by path">' in html
+    assert '<span class="node-name">protected</span>' in html
+    assert '<span class="node-name">one</span>' in html
+    assert '<span class="node-name">two</span>' in html
+    assert '<span class="warning-message">Permission &lt;denied&gt;</span>' in html
+    assert '<span class="warning-message">Operation not permitted</span>' in html
+    assert "<ul>" not in html
     assert ".warning-panel { margin: 20px 0 0;" in html
     assert ".tree-region { width: max-content; max-width: 100%; }" in html
     assert '<input id="tree-filter" type="search"' in html
