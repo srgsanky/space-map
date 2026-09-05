@@ -9,6 +9,7 @@ from rich.live import Live
 from rich.table import Table
 
 from .formatting import format_elapsed, format_size
+from .json_report import write_json_report
 from .model import ScanOptions, ScanProgress
 from .report import write_html_report
 from .scanner import scan_tree
@@ -54,6 +55,11 @@ class _ProgressView:
     help="HTML report destination.",
 )
 @click.option(
+    "--json-output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Optional machine-readable JSON report destination.",
+)
+@click.option(
     "--threshold-mb",
     type=click.IntRange(min=1),
     default=100,
@@ -73,14 +79,19 @@ class _ProgressView:
 def main(
     root: Path,
     output: Path,
+    json_output: Path | None,
     threshold_mb: int,
     one_file_system: bool,
     include_time_machine: bool,
 ) -> None:
-    """Scan ROOT and generate a collapsible disk-space HTML report."""
+    """Scan ROOT and generate disk-space reports."""
     console = Console(stderr=True)
     root = root.expanduser().resolve(strict=True)
     output = output.expanduser().resolve(strict=False)
+    if json_output is not None:
+        json_output = json_output.expanduser().resolve(strict=False)
+        if json_output == output:
+            raise click.UsageError("--output and --json-output must be different paths")
     started_at = time.monotonic()
     view = _ProgressView(root, started_at)
     last_plain_render = 0.0
@@ -99,7 +110,7 @@ def main(
         threshold_bytes=threshold_mb * _MB,
         one_file_system=one_file_system,
         skip_time_machine_volumes=not include_time_machine,
-        excluded_paths=(output,),
+        excluded_paths=tuple(path for path in (output, json_output) if path is not None),
     )
 
     try:
@@ -126,14 +137,18 @@ def main(
                 force=True,
             )
         write_html_report(result, output)
+        if json_output is not None:
+            write_json_report(result, json_output)
     except KeyboardInterrupt:
-        console.print("[yellow]Scan interrupted; no report was written.[/yellow]")
+        console.print("[yellow]Interrupted; report generation did not complete.[/yellow]")
         raise click.exceptions.Exit(130) from None
     except (OSError, ValueError) as error:
         raise click.ClickException(str(error)) from error
 
     status = "partial" if result.root.incomplete else "complete"
     click.echo(f"Report written: {output}", err=True)
+    if json_output is not None:
+        click.echo(f"JSON written: {json_output}", err=True)
     console.print(
         f"{format_size(result.root.allocated_bytes)} found in "
         f"{format_elapsed(result.elapsed_seconds)} ({status}; "

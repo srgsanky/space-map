@@ -6,4 +6,5 @@ dist/
 __pycache__/
 *.py[cod]
 space-map-report.html
+space-map-report.json
 .*.html.*.tmp

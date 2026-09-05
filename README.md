@@ -44,6 +44,10 @@ uv run space-map ~
 # Choose the destination
 uv run space-map / --output ~/Desktop/disk-space-report.html
 
+# Also write exact sizes and scan metadata as machine-readable JSON
+uv run space-map / --output ~/Desktop/disk-space-report.html \
+  --json-output ~/Desktop/disk-space-report.json
+
 # Avoid crossing onto another mounted filesystem
 uv run space-map /Volumes/Data --one-file-system
 
@@ -76,7 +80,19 @@ Run `space-map --help` for all options.
 - Dot files and dot directories are included.
 - Sizes are displayed only as MB, GB, or TB.
 
-The report is one local HTML file with embedded CSS and a small filtering script. It has no external assets, network requests, or server requirement and can be opened directly with `file://` in a browser.
+The HTML report is one local file with embedded CSS and a small filtering script. It has no external assets, network requests, or server requirement and can be opened directly with `file://` in a browser.
+
+Pass `--json-output PATH` to additionally write a machine-readable report. Its flat `nodes` array preserves exact allocated byte counts, parent IDs, paths, node kinds, scan options, and warnings. The JSON and HTML contain the same thresholded report tree.
+
+## Reclaim candidate skill
+
+This repository includes the `space-map-reclaim` agent skill. Give it either report format to rank likely high-return, low-effort cleanup candidates without modifying the filesystem:
+
+```text
+/skill:space-map-reclaim ~/Desktop/disk-space-report.json
+```
+
+JSON is preferred when available; existing HTML reports are also supported. The skill treats reported sizes as reclaim ceilings and separates routine generated data from items that need application, personal-data, or system review.
 
 ## Progress
 
