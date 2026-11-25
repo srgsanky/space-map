@@ -2,6 +2,8 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 from pathlib import Path
 
+import pytest
+
 from space_map import ReportNode, ScanOptions, ScanResult, ScanWarning, write_html_report
 
 
@@ -119,3 +121,159 @@ def test_write_html_report_creates_a_self_contained_collapsible_and_escaped_tree
     assert "https://" not in html
     assert "Expand all" not in html
     assert "Collapse all" not in html
+
+
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_report_shows_total_and_immediate_parent_shares_at_every_depth(
+    tmp_path: Path, incomplete: bool
+) -> None:
+    root = ReportNode(
+        kind="root",
+        name="root",
+        path=tmp_path,
+        allocated_bytes=1000,
+        incomplete=incomplete,
+        children=(
+            ReportNode(
+                kind="file", name="large.bin", path=tmp_path / "large.bin", allocated_bytes=700
+            ),
+            ReportNode(
+                kind="directory",
+                name="small",
+                path=tmp_path / "small",
+                allocated_bytes=300,
+                children=(
+                    ReportNode(
+                        kind="directory",
+                        name="nested",
+                        path=tmp_path / "small" / "nested",
+                        allocated_bytes=150,
+                        children=(
+                            ReportNode(
+                                kind="file",
+                                name="nested.bin",
+                                path=tmp_path / "small" / "nested" / "nested.bin",
+                                allocated_bytes=150,
+                            ),
+                        ),
+                    ),
+                    ReportNode(
+                        kind="file",
+                        name="small.bin",
+                        path=tmp_path / "small" / "small.bin",
+                        allocated_bytes=75,
+                    ),
+                    ReportNode(
+                        kind="misc_files",
+                        name="Misc files",
+                        path=None,
+                        allocated_bytes=45,
+                        item_count=3,
+                    ),
+                    ReportNode(
+                        kind="misc_directories",
+                        name="Misc directories",
+                        path=None,
+                        allocated_bytes=30,
+                        item_count=2,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    document = _render_report(tmp_path, root)
+
+    _assert_row_shares(document, "root", total=100, parent=None)
+    _assert_row_shares(document, "large.bin", total=70, parent=70)
+    _assert_row_shares(document, "small", total=30, parent=30)
+    _assert_row_shares(document, "nested", total=15, parent=50)
+    _assert_row_shares(document, "nested.bin", total=15, parent=100)
+    _assert_row_shares(document, "small.bin", total=7.5, parent=25)
+    _assert_row_shares(document, "Misc files", total=4.5, parent=15)
+    _assert_row_shares(document, "Misc directories", total=3, parent=10)
+    assert ("Partial scan" in document) == incomplete
+
+
+def test_report_handles_an_empty_scan_and_zero_size_parent(tmp_path: Path) -> None:
+    root = ReportNode(
+        kind="root",
+        name="empty root",
+        path=tmp_path,
+        allocated_bytes=0,
+        children=(
+            ReportNode(
+                kind="directory",
+                name="empty directory",
+                path=tmp_path / "empty",
+                allocated_bytes=0,
+                children=(
+                    ReportNode(kind="misc_files", name="Misc files", path=None, allocated_bytes=0),
+                ),
+            ),
+        ),
+    )
+
+    document = _render_report(tmp_path, root)
+
+    _assert_row_shares(document, "empty root", total=0, parent=None)
+    _assert_row_shares(document, "empty directory", total=0, parent=0)
+    _assert_row_shares(document, "Misc files", total=0, parent=0)
+
+
+@pytest.mark.parametrize(
+    ("size", "expected_size", "expected_class"),
+    [
+        (0, "0.0 MB", "node-size-mb"),
+        (100 * 1024**2, "100.0 MB", "node-size-mb"),
+        (1024**3 - 1, "1024.0 MB", "node-size-mb"),
+        (1024**3, "1.0 GB", "node-size-gb"),
+        (1024**4 - 1, "1024.0 GB", "node-size-gb"),
+        (1024**4, "1.0 TB", "node-size-tb"),
+    ],
+)
+def test_report_styles_sizes_by_the_displayed_unit(
+    tmp_path: Path, size: int, expected_size: str, expected_class: str
+) -> None:
+    root = ReportNode(kind="root", name="root", path=tmp_path, allocated_bytes=size)
+
+    document = _render_report(tmp_path, root)
+
+    assert f'<span class="node-size {expected_class}">{expected_size}</span>' in document
+    assert ".node-size-gb { color: #245b80; background: #e7eef5; font-weight: 700; }" in document
+    assert ".node-size-tb { color: #70459a; background: #eee5f5; font-weight: 700; }" in document
+
+
+def _render_report(tmp_path: Path, root: ReportNode) -> str:
+    timestamp = datetime(2026, 7, 18, tzinfo=UTC)
+    result = ScanResult(
+        root=root,
+        started_at=timestamp,
+        completed_at=timestamp,
+        elapsed_seconds=0,
+        directories_scanned=0,
+        files_scanned=0,
+        warnings=(),
+        suppressed_warning_count=0,
+        options=ScanOptions(),
+    )
+    output = tmp_path / "report.html"
+    write_html_report(result, output)
+    return output.read_text()
+
+
+def _assert_row_shares(document: str, name: str, *, total: float, parent: float | None) -> None:
+    name_markup = f'<span class="node-name">{escape(name)}</span>'
+    row = document.split(name_markup, 1)[1].split("</div>", 1)[0]
+    assert (
+        f'<span class="node-share node-share-total" title="Share of total scanned space">'
+        f'{total:.1f}%<span class="share-label">of total</span></span>'
+    ) in row
+    parent_text = f"{parent:.1f}%" if parent is not None else "—"
+    parent_title = "Share of immediate parent" if parent is not None else "No parent in this report"
+    assert (
+        f'<span class="node-share node-share-parent" title="{parent_title}">'
+        f'{parent_text}<span class="share-label">of parent</span></span>'
+    ) in row
+    assert f'style="--share:{total:.2f}%"' in row
+    assert row.index("node-share-total") < row.index("node-share-parent")

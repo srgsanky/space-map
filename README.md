@@ -70,6 +70,8 @@ Run `space-map --help` for all options.
 ## What the report shows
 
 - The root row always shows the allocated size of the complete scanned tree.
+- Every row shows two percentages: **of total** is its share of all scanned space, and **of parent** is its share of its immediate parent. The overall share is emphasized and drives the usage bar, so entries at different depths can be compared directly. The root has no parent, shown as `—`.
+- **Of total** uses the scanned root's allocated bytes, not the disk's physical capacity or free space. For a partial scan, it is the share of the space successfully scanned. Filtering does not change either percentage.
 - Real files and directories are shown individually when they are at least 100 MB by default.
 - Smaller direct child directories are combined into `Misc directories` at each parent.
 - Smaller direct child files are combined into `Misc files` at each parent.
@@ -78,7 +80,7 @@ Run `space-map --help` for all options.
 - The report can be filtered by a case-insensitive substring of a file or directory's name or full path. Matching rows remain fully visible while their retained parent rows are dimmed.
 - A copy icon beside each real file or directory name copies its full path. The report falls back to the legacy clipboard API when a browser restricts clipboard access for local files.
 - Dot files and dot directories are included.
-- Sizes are displayed only as MB, GB, or TB.
+- Sizes are displayed only as MB, GB, or TB. MB values are neutral; GB values use bold blue badges, and TB values use bold purple badges for quick visual contrast.
 
 The HTML report is one local file with embedded CSS and a small filtering script. It has no external assets, network requests, or server requirement and can be opened directly with `file://` in a browser.
 

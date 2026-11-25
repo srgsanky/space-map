@@ -101,7 +101,7 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .tree-children:not(:empty)::before {{ content: ""; position: absolute; left: 0; top: -6px; height: 6px; border-left: 1px solid var(--border-strong); }}
 .tree-children > .tree-branch::after, .tree-children > .tree-node::after {{ content: ""; position: absolute; left: -18px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }}
 .tree-children > :last-child::after, .tree-shell.is-filtering .tree-children > :not([hidden]):not(:has(~ :not([hidden])))::after {{ bottom: auto; height: 18px; }}
-.tree-node {{ position: relative; display: grid; grid-template-columns: minmax(max-content, 1fr) 90px 64px 90px; align-items: center; gap: 16px; width: 100%; min-height: 36px; padding: 5px 8px; }}
+.tree-node {{ position: relative; display: grid; grid-template-columns: minmax(max-content, 1fr) 90px 80px 80px 90px; align-items: center; gap: 16px; width: 100%; min-height: 36px; padding: 5px 8px; }}
 .tree-node:hover {{ background: var(--panel); }}
 .tree-node::before {{ content: ""; position: absolute; left: -18px; top: 50%; width: 18px; border-top: 1px solid var(--border-strong); }}
 .root-branch > summary .tree-node::before {{ display: none; }}
@@ -124,7 +124,11 @@ h1 {{ font-size: 30px; letter-spacing: -.03em; }}
 .node-kind-directory path {{ stroke: var(--folder-outline); stroke-width: 1.4; stroke-linejoin: round; }}
 .node-kind {{ color: var(--muted); font-size: 12px; white-space: nowrap; }}
 .node-share, .node-size {{ color: var(--secondary); font-family: ui-monospace, monospace; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }}
-.node-size {{ color: var(--text); font-size: 13px; font-weight: 700; }}
+.node-share-total {{ color: var(--accent); font-weight: 700; }}
+.share-label {{ display: block; color: var(--muted); font-family: Aptos, "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; font-weight: 400; }}
+.node-size {{ padding: 3px 6px; border-radius: 4px; font-size: 13px; }}
+.node-size-gb {{ color: #245b80; background: #e7eef5; font-weight: 700; }}
+.node-size-tb {{ color: #70459a; background: #eee5f5; font-weight: 700; }}
 .usage-track {{ height: 6px; overflow: hidden; border-radius: 999px; background: var(--sunken); }}
 .usage-fill {{ display: block; width: var(--share); height: 100%; border-radius: inherit; background: var(--bar); }}
 .node-incomplete {{ color: var(--warning); }}
@@ -412,7 +416,8 @@ def _write_warning_row(stream: TextIO, node: _WarningPathNode, *, leaf: bool) ->
 
 
 def _write_tree(stream: TextIO, root: ReportNode) -> None:
-    stack: list[tuple[str, ReportNode, int]] = [("node", root, root.allocated_bytes)]
+    total_bytes = root.allocated_bytes
+    stack: list[tuple[str, ReportNode, int | None]] = [("node", root, None)]
     while stack:
         event, node, parent_bytes = stack.pop()
         if event == "close":
@@ -424,22 +429,30 @@ def _write_tree(stream: TextIO, root: ReportNode) -> None:
             classes = "tree-branch root-branch" if node.kind == "root" else "tree-branch"
             open_attribute = " open" if node.kind == "root" else ""
             stream.write(f'<details class="{classes}"{open_attribute}><summary>')
-            _write_row(stream, node, parent_bytes, leaf=False)
+            _write_row(stream, node, parent_bytes, total_bytes, leaf=False)
             stream.write('</summary><div class="tree-children">')
             stack.append(("close", node, parent_bytes))
             for child in reversed(node.children):
                 stack.append(("node", child, node.allocated_bytes))
         else:
-            _write_row(stream, node, parent_bytes, leaf=True)
+            _write_row(stream, node, parent_bytes, total_bytes, leaf=True)
 
 
-def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: bool) -> None:
-    share = (
-        100.0
-        if node.kind == "root"
-        else (
-            min(100.0, max(0.0, node.allocated_bytes / parent_bytes * 100)) if parent_bytes else 0.0
-        )
+def _percentage(allocated_bytes: int, total_bytes: int) -> float:
+    return min(100.0, max(0.0, allocated_bytes / total_bytes * 100)) if total_bytes else 0.0
+
+
+def _write_row(
+    stream: TextIO, node: ReportNode, parent_bytes: int | None, total_bytes: int, *, leaf: bool
+) -> None:
+    total_share = _percentage(node.allocated_bytes, total_bytes)
+    parent_share = (
+        f"{_percentage(node.allocated_bytes, parent_bytes):.1f}%"
+        if parent_bytes is not None
+        else "—"
+    )
+    parent_title = (
+        "Share of immediate parent" if parent_bytes is not None else "No parent in this report"
     )
     name = html.escape(node.name, quote=True)
     title = html.escape(str(node.path), quote=True) if node.path is not None else name
@@ -447,6 +460,8 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
     copy_button = _copy_path_button(title) if node.path is not None else ""
     kind_icon = _kind_icon(node)
     kind_detail = _kind_detail(node)
+    formatted_size = format_size(node.allocated_bytes)
+    size_unit = formatted_size.rsplit(" ", 1)[1].lower()
     incomplete = (
         '<span class="node-incomplete" title="Some entries could not be read">partial</span>'
         if node.incomplete
@@ -458,9 +473,12 @@ def _write_row(stream: TextIO, node: ReportNode, parent_bytes: int, *, leaf: boo
         '<span class="node-main"><span class="node-marker" aria-hidden="true"></span>'
         f'<span class="node-name-group"><span class="node-name">{name}</span>{copy_button}</span>'
         f"{kind_icon}{kind_detail}{incomplete}</span>"
-        f'<span class="usage-track" aria-hidden="true"><span class="usage-fill" style="--share:{share:.2f}%"></span></span>'
-        f'<span class="node-share">{share:.1f}%</span>'
-        f'<span class="node-size">{format_size(node.allocated_bytes)}</span></div>'
+        f'<span class="usage-track" aria-hidden="true"><span class="usage-fill" style="--share:{total_share:.2f}%"></span></span>'
+        f'<span class="node-share node-share-total" title="Share of total scanned space">'
+        f'{total_share:.1f}%<span class="share-label">of total</span></span>'
+        f'<span class="node-share node-share-parent" title="{parent_title}">'
+        f'{parent_share}<span class="share-label">of parent</span></span>'
+        f'<span class="node-size node-size-{size_unit}">{formatted_size}</span></div>'
     )
 
 
